@@ -1,3 +1,12 @@
+- [Problems](#problems)
+  - [1. PeerID](#1-peerid)
+    - [Reproduce:](#reproduce)
+    - [Description](#description)
+  - [2. SecIO handshake hangs](#2-secio-handshake-hangs)
+    - [Reproduce:](#reproduce-1)
+    - [JS logs](#js-logs)
+    - [Rust logs](#rust-logs)
+
 ## Libp2p: Rust + JS
 Attempt to connect libp2p in Rust with libp2p in JS
 
@@ -16,7 +25,7 @@ make js-rust-peerid
 - JS says it's incorrect: `libp2p:error could not connect to discovered peer Error: dialed to the wrong peer, Ids do not match`
 - Internally, JS derives the following PeerID from Rust's public key: `12D3KooWSwNXzEeGjgwEocRJBzbdoDqxbz3LdrwgSuKmKeGvbM4G`
 
-### 1. SecIO handshake hangs
+### 2. SecIO handshake hangs
 #### Reproduce:
 ```bash
 # In a first terminal window/tab, execute
