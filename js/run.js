@@ -27,11 +27,23 @@ if (process.argv.length > 2) {
 class MyBundle extends libp2p {
   constructor(_options) {
     const defaults = {
-      modules: {
-        transport: [TCP],
-        streamMuxer: [Mplex],
-        connEncryption: [SECIO], // TODO: [SECIO]
-      },
+        modules: {
+            transport: [TCP],
+            streamMuxer: [Mplex],
+            connEncryption: [SECIO], // TODO: [SECIO]
+            pubsub: FloodSub
+        },
+        config: {
+            pubsub: {
+                enabled: true,
+                emitSelf: false,
+                signMessages: false,
+                strictSigning: false
+            },
+            relay: {
+                enabled: false,
+            }
+        }
     };
 
     super(defaultsDeep(_options, defaults))
@@ -71,19 +83,42 @@ function createNode(callback) {
       node.start(cb);
     },
     (cb) => {
-      console.log("node started");
-      console.log("will dial " + RUST_PEER);
-      node.dial(RUST_PEER, cb)
+        console.log("node started");
+        console.log("will dial " + RUST_PEER);
+        node.dial(RUST_PEER, cb)
     },
-    (conn, cb) => {
-      console.log("connected " + JSON.stringify(conn));
+    (cb) => {
+        console.log("node dialed");
+        node.pubsub.subscribe("5zKTH5FR", (msg) => {
+            console.log("floodsub received", msg.data.toString(), 'from', msg.from)
+        }, {}, cb);
+        // cb()
+    },
+    (cb) => {
+        console.log('floodsub subscribed');
+        node.pubsub.publish("5zKTH5FR", "hello from javascript!", cb);
+        // cb()
+    },
+    (cb) => {
+        console.log('floodsub published');
+        // setInterval(() => {
+        //     node.pubsub.publish(
+        //         '5zKTH5FR',
+        //         "hello from javascript!",
+        //         (err) => {
+        //             if (err) { console.log('error on floodsub publish', err) }
+        //             else { console.log('floodsub publish OK')}
+        //         }
+        //     )
+        // }, 1000);
+        cb();
     }
   ], (err) => callback(err, node))
 }
 
 createNode((err) => {
   if (err) {
-    console.log('\nError:', JSON.stringify(err))
+    console.log('\nError:', JSON.stringify(err));
     throw err
   }
 });

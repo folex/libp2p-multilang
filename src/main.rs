@@ -1,9 +1,13 @@
 use futures::{future, prelude::*};
-use libp2p::identity::PublicKey;
 use libp2p::{
+    floodsub::{self, Floodsub, FloodsubEvent},
     identity,
+    identity::PublicKey,
     ping::{Ping, PingConfig},
-    Multiaddr, PeerId, Swarm,
+    swarm::NetworkBehaviourEventProcess,
+    tokio_codec::{FramedRead, LinesCodec},
+    tokio_io::{AsyncRead, AsyncWrite},
+    Multiaddr, NetworkBehaviour, PeerId, Swarm,
 };
 use std::env;
 use std::time::Duration;
@@ -12,6 +16,7 @@ use base64;
 
 use identity::ed25519;
 use identity::Keypair;
+use libp2p_identify::{Identify, IdentifyEvent};
 
 // TODO: connect with js
 // TODO: secio
@@ -20,6 +25,35 @@ use identity::Keypair;
 
 const PRIVATE_KEY: &str =
     "/O5p1cDNIyEkG3VP+LqozM+gArhSXUdWkKz6O+C6Wtr+YihU3lNdGl2iuH37ky2zsjdv/NJDzs11C1Vj0kClzQ==";
+
+#[derive(NetworkBehaviour)]
+struct MyBehaviour<TSubstream: AsyncRead + AsyncWrite> {
+    floodsub: Floodsub<TSubstream>,
+    identify: Identify<TSubstream>,
+}
+
+impl<TSubstream: AsyncRead + AsyncWrite> NetworkBehaviourEventProcess<FloodsubEvent>
+    for MyBehaviour<TSubstream>
+{
+    // Called when `floodsub` produces an event.
+    fn inject_event(&mut self, message: FloodsubEvent) {
+        if let FloodsubEvent::Message(message) = message {
+            println!(
+                "Received floodsub msg: '{:?}' from {:?}",
+                String::from_utf8_lossy(&message.data),
+                message.source
+            );
+        }
+    }
+}
+
+impl<TSubstream: AsyncRead + AsyncWrite> NetworkBehaviourEventProcess<IdentifyEvent>
+    for MyBehaviour<TSubstream>
+{
+    fn inject_event(&mut self, event: IdentifyEvent) {
+        //        println!("Received identify event {:?}", event);
+    }
+}
 
 fn serve(port: i32) {
     // Create a random PeerId
@@ -43,23 +77,49 @@ fn serve(port: i32) {
     }
 
     // Set up a an encrypted DNS-enabled TCP Transport over the Mplex and Yamux protocols
-    let transport = libp2p::build_development_transport(local_key);
+    let transport = libp2p::build_development_transport(local_key.clone());
 
-    let behaviour = Ping::new(PingConfig::new().with_keep_alive(true));
+    // Create a Floodsub topic
+    let floodsub_topic = floodsub::TopicBuilder::new("chat").build();
+    println!("floodsub topic is {:?}", floodsub_topic);
 
-    let mut swarm = Swarm::new(transport, behaviour, local_peer_id.clone());
+    let mut swarm = {
+        //        let behaviour = Ping::new(PingConfig::new().with_keep_alive(true));
+        //        Swarm::new(transport, behaviour, local_peer_id.clone())
+        let mut behaviour = MyBehaviour {
+            floodsub: Floodsub::new(local_peer_id.clone()),
+            identify: Identify::new("1.0.0".into(), "1.0.0".into(), local_key.public()),
+        };
+
+        behaviour.floodsub.subscribe(floodsub_topic.clone());
+        Swarm::new(transport, behaviour, local_peer_id.clone())
+    };
 
     // Tell the swarm to listen on all interfaces and a random, OS-assigned port.
     let addr: Multiaddr = format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap();
     Swarm::listen_on(&mut swarm, addr.clone()).unwrap();
     //    Swarm::add_external_address(&mut swarm, addr.clone());
 
+    let stdin = tokio_stdin_stdout::stdin(0);
+    let mut framed_stdin = FramedRead::new(stdin, LinesCodec::new());
+
     // Use tokio to drive the `Swarm`.
     let mut listening = false;
     tokio::run(future::poll_fn(move || -> Result<_, ()> {
         loop {
+            match framed_stdin.poll().expect("Error while polling stdin") {
+                Async::Ready(Some(line)) => {
+                    println!("sending floodsub msg");
+                    swarm.floodsub.publish(&floodsub_topic, line.as_bytes())
+                }
+                Async::Ready(None) => panic!("Stdin closed"),
+                Async::NotReady => break,
+            };
+        }
+
+        loop {
             match swarm.poll().expect("Error while polling swarm") {
-                Async::Ready(Some(e)) => println!("sent {:?} to {:?}", e.result, e.peer),
+                Async::Ready(Some(e)) => println!("event {:?}", e), //println!("sent {:?} to {:?}", e.result, e.peer),
                 Async::Ready(None) | Async::NotReady => {
                     if !listening {
                         if let Some(a) = Swarm::listeners(&swarm).next() {
@@ -82,47 +142,8 @@ fn serve(port: i32) {
     }));
 }
 
-fn dial(addr: &str) {
-    // Create a random PeerId
-    let local_key = identity::Keypair::generate_ed25519();
-    let local_peer_id = PeerId::from(local_key.public());
-
-    println!("peer id: {}", local_peer_id);
-
-    // Set up a an encrypted DNS-enabled TCP Transport over the Mplex and Yamux protocols
-    let transport = libp2p::build_development_transport(local_key);
-
-    let behaviour = Ping::new(
-        PingConfig::new()
-            .with_keep_alive(true)
-            .with_interval(Duration::from_secs(1)),
-    );
-
-    let mut swarm = Swarm::new(transport, behaviour, local_peer_id);
-
-    let addr = addr.parse().unwrap();
-
-    Swarm::dial_addr(&mut swarm, addr).expect("error dialing addr");
-
-    tokio::run(future::poll_fn(move || -> Result<_, ()> {
-        loop {
-            match swarm.poll().expect("Error while polling swarm") {
-                Async::Ready(Some(e)) => println!("sent {:?} to {:?}", e.result, e.peer),
-                Async::Ready(None) | Async::NotReady => {
-                    return Ok(Async::NotReady);
-                }
-            }
-        }
-    }));
-}
-
 fn main() {
     env_logger::init();
 
-    let args: Vec<String> = env::args().collect();
-    if args.len() > 1 && args[1] == "dial" {
-        dial(args[2].as_str())
-    } else {
-        serve(30000)
-    }
+    serve(30000)
 }
