@@ -30,7 +30,7 @@ class MyBundle extends libp2p {
         modules: {
             transport: [TCP],
             streamMuxer: [Mplex],
-            connEncryption: [SECIO], // TODO: [SECIO]
+            connEncryption: [SECIO],
             pubsub: FloodSub
         },
         config: {
