@@ -1,12 +1,3 @@
-- [Problems](#problems)
-  - [1. PeerID](#1-peerid)
-    - [Reproduce:](#reproduce)
-    - [Description](#description)
-  - [2. SecIO handshake hangs](#2-secio-handshake-hangs)
-    - [Reproduce:](#reproduce-1)
-    - [JS logs](#js-logs)
-    - [Rust logs](#rust-logs)
-
 ## Libp2p: Rust + JS
 Attempt to connect libp2p in Rust with libp2p in JS via gossipsub
 
