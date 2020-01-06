@@ -1,5 +1,5 @@
 ## Libp2p: Rust + JS
-Attempt to connect libp2p in Rust with libp2p in JS via gossipsub
+Attempt to connect libp2p in Rust with libp2p in JS via gossipsub. **Rust-to-rust and rust-to-js works, js-to-rust don't.** Gossipsub is taken from [rust-libp2p #898](https://github.com/libp2p/rust-libp2p/pull/898).
 
 ## Problem: JS can't publish message to Rust
 ### Reproduce:
